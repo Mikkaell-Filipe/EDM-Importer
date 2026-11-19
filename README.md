@@ -1,94 +1,198 @@
-# DCS EDM para Blender (custom) 0.7.0
+# DCS World EDM Exporter/Importer for Blender (`io_scene_edm_custom`)
 
-Alvo: Blender 4.2+ (testado em desenho para 5.x; **não foi executado dentro do Blender** nesta build, ver "Testado / não testado").
+![Version](https://img.shields.io/badge/Version-0.7.0--alpha-blue?style=flat-square)
+![Blender](https://img.shields.io/badge/Blender-4.2%2B%20%7C%205.x-F5792A?style=flat-square&logo=blender&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![DCS World](https://img.shields.io/badge/DCS%20World-EDM%20v10-1F2937?style=flat-square)
 
-> **Atenção (estado real deste zip):** o `import_edm.py` e o `__init__.py` recebidos eram os da linha 0.3.x (um empty por nó, frame = arg x 100). Por isso as seções 0.4.0 abaixo sobre importador em cadeia (anti-esticamento), `EDM_Diagnostic`, Split/Join e Mapping Report **descrevem a 0.4.x e não estão neste zip**; o que a 0.6.0 acrescenta (animação fácil, texturas, verificação, DDS) funciona sobre o importador 0.3.x e sobre o exportador 0.5.8.
+**Language / Idioma:** [English](#english) | [Português](#português)
 
-## Connectors (0.7.0)
-Empties novos com nome A29N-*, PNT_*, PTR-* ou FP_* (ou propriedade `edm_connector`=1) sao gravados como Connector no export. Veja a secao "NEW CONNECTORS written" do Text `EDM_Export_Report`. Para uma tela: o trio CENTER/DOWN/RIGHT, cada um com o filho .001, como o script A29N_criar_conectores.py ja cria.
+---
 
-## Instalar
-Edit > Preferences > Add-ons > seta no canto > **Install from Disk...** > escolha `io_scene_edm_custom.zip`. Ative "DCS World EDM format (.edm) [custom]". Desative/remova versões antigas deste addon antes.
+## English
 
-## O que mudou na 0.4.0
+Custom add-on for importing, editing, and exporting (via patching) **DCS World `.edm`** models in **Blender 4.2+** (designed for **5.x** compatibility; not yet executed live inside Blender in this build—see *Validation Status*).
 
-### 1. Distorção / partes esticadas
-Causa real encontrada: vários nós EDM têm matriz com **escala não uniforme em eixos rotacionados** (cisalhamento no vocabulário do Blender). Um Object do Blender só guarda loc/rot/scale, então o importador antigo, ao jogar essa matriz em UM empty, perdia o cisalhamento e toda a malha filha saía esticada. No Cockpit_A-29B há 80 TransformNodes e 4 nós de animação nessa situação, e escalas de até ~68:1 (ex.: Flaps, Throttle Plate).
-Correção: cada nó vira uma **cadeia curta de empties** (decomposição exata por SVD, erro medido ~1e-13). Nó simples = 1 empty; alavanca animada = 3. O último empty da cadeia ("tip") é o pai das malhas e filhos. A animação também deixou de sobrescrever a pose de repouso com uma decomposição com perda.
-Modo de diagnóstico no import: `Full`, `No animation`, `Legacy 0.3.x matrices` (A/B). O Text **EDM_Diagnostic** lista os piores nós por anisotropia, nós espelhados, malhas fundidas e avisos.
+> **Warning — Actual State of This Release:**  
+> The `import_edm.py` and `__init__.py` files packaged in this zip belong to the **0.3.x** branch (one empty per node, `frame = arg × 100`). Therefore, the **0.4.0** sections below describing the chained anti-stretching importer, `EDM_Diagnostic`, *Split/Join*, and *Mapping Report* document the 0.4.x architecture and **are not active in this zip**. Features from **0.6.0** and **0.7.0** (Connectors, *Easy EDM*, textures, pre-export checks, and DDS conversion) operate on top of the 0.3.x importer and 0.5.8 exporter.
 
-### 2. Malhas juntas (cadeira ejetora etc.)
-* Na importação: opção **Split merged meshes into loose parts**, ou depois, com os objetos selecionados: painel lateral **EDM > Split Loose Parts**.
-* Ilhas são detectadas com vértices soldados por posição (costura de UV não fatia peça).
-* Cada parte guarda `edm_part_info` (centro e tamanho) para você achar a cadeira.
-* Exportar **recombina** as partes de cada slot. Mover uma parte move só ela; apagar remove só ela.
-* **EDM: Join Parts (same slot)** junta peças do mesmo nó/grupo (ex.: toda a cadeira) num objeto só, e recusa juntar slots diferentes.
-* Cockpit_A-29B: 992 partes no total (o grupo "Cockpit Base" sozinho tem 114).
+### Installation
 
-**Cadeira soldada ao casco:** no Cockpit_A-29B as cadeiras dividem vértices com o casco (uma única ilha de 220 faces, 0,9 x 3,38 x 1,19 m), então Split Loose Parts não separa. Use: selecione `Cockpit Base_mesh`, Tab (Edit Mode), ative X-ray (Alt+Z), selecione as faces da cadeira (box select ou L sobre a peça), clique **EDM > Separate Selection as Part** e dê um nome. A cadeira vira um objeto do mesmo slot; mova/apague/reparente à vontade e exporte.
+1. Go to the **[Releases](../../releases/latest)** tab and download **`io_scene_edm_custom.zip`** *(do not extract the `.zip` file)*.
+2. Disable and remove any previous versions of this add-on before installing.
+3. In **Blender**, open **Edit > Preferences > Add-ons**.
+4. Click the drop-down arrow (`v`) in the top-right corner and select **Install from Disk...**.
+5. Select `io_scene_edm_custom.zip` and enable **`DCS World EDM format (.edm) [custom]`**.
 
-### 3. Nomes aleatórios
-Malhas agora se chamam `<nó pai>_mesh` (o nome do RenderNode original, quase sempre vazio, fica em `edm_render_name`). O vínculo malha->material nunca depende do nome: usa `edm_render_index`, `edm_parent_group` e `edm_material_id`. **EDM: Mapping Report** gera o Text `EDM_Mapping` (nó, objeto, render#, grupo, material EDM, shader, texturas).
+### Key Features
 
-### 4. Args e animação
-* Um Action por argumento, nomeado `<arg>_<objeto>` (o que o exportador oficial lê).
-* Convenção oficial: arg -1..1 = frames 0..200 (frame 100 = arg 0). Opção "Legacy" mantém arg x 100.
-* Visibilidade: propriedade float `VISIBLE` (como o oficial) + drivers que escondem os filhos.
-* Slider **EDM > Argument preview** move a timeline.
+#### Connectors (`v0.7.0`)
+- **Automatic Connector Export:** New empties named with `A29N-*`, `PNT_*`, `PTR-*`, or `FP_*` prefixes (or carrying the custom property `edm_connector = 1`) are written as *Connector* nodes on export.
+- **Report:** Check the `NEW CONNECTORS written` section inside the **`EDM_Export_Report`** text block.
+- **Displays / Screens:** Use the standard `CENTER`, `DOWN`, and `RIGHT` trio, each with its `.001` child empty (matching the layout generated by `A29N_criar_conectores.py`).
 
-### 5. Importação
-Material cacheado por índice EDM (dois materiais com o mesmo nome não se fundem), todas as texturas registradas (`edm_textures`), difuso e normal ligados, uniforms em `edm_uniforms`, luzes com todas as propriedades em `edm_light_props`.
+#### Easy EDM — Animation & Textures (`v0.6.0`)
+Open the sidebar in the **3D View** by pressing **`N`** and selecting the **`EDM`** tab.
 
-### 6. Exportação
-Continua **remendando o arquivo-fonte** (não gera EDM do zero). Novo: recombina partes, grava pivôs: mova o **primeiro** empty da cadeia de um nó (o que tem o nome do nó) e o pivô vai para o arquivo. Partes reparentadas para outro nó viram RenderNode novo.
+**Animating levers, switches, covers, and doors:**
+1. Place the **3D Cursor** on the hinge/axis (or set the object origin) and select the target mesh(es).
+2. In the **EDM** panel, choose **Rotate** (*Girar*) or **Move** (*Mover*), set the **DCS argument**, axis, and travel amount (degrees or meters; negative values invert direction), and pick the pivot reference (*active object / 3D cursor / center*).
+3. Test the motion using the **Test argument** slider or by scrubbing the timeline (`frame 100 = arg 0`, `frame 200 = arg 1`, `frame 0 = arg -1`).
+4. **Multi-stage animations** *(e.g., 3-position landing gear)*: With the pivot selected, move to another frame, rotate/move the pivot, and press **`I`**.
+5. **Stacked animations** *(e.g., rotate and slide on the same part)*: Select the **mesh** again and create the second animation; the new pivot is automatically parented to the first one (chained nodes in the `.edm`), each with its own argument.
+6. **Visibility (*Show / Hide*):** Specify the argument ranges where the part is visible (e.g., `>0.5` or `0:0.3; 0.7:1`).
+7. Export via **File > Export > DCS EDM** and review `NEW animations written` in **`EDM_Export_Report`**.
 
-## Adicionar geometria nova (estrutura, piloto, cadeira...) -- 0.5.0
-1. Modele em qualquer colecao da cena. O mesh precisa estar **visivel** (olho e monitor) e sem a propriedade `edm_skip`.
-2. **Parente ao empty do no** onde ele deve viver (ex.: `cadeira front`, `piloto frente`): assim ele herda animacao/visibilidade do cockpit. Sem pai ele vai para o no raiz (estatico, sempre visivel).
-3. Material: (a) se a imagem do Material do Blender ja for textura de um material do .edm, ele e reaproveitado; (b) se for imagem nova, o export CRIA um material EDM novo com esse nome de imagem (copie `<nome>.dds` para a pasta de texturas do mod); (c) para forcar um material existente, ponha a propriedade `edm_new_material` = nome ou indice.
-4. Transformacoes do objeto e modificadores sao aplicados nos vertices. O UV precisa estar desenhado para a textura escolhida.
-5. Depois do export abra o Text **EDM_Export_Report**: lista o que foi gravado, o que foi ignorado (e por que) e o que foi REMOVIDO do original.
-6. Limites: geometria nova e estatica (sem novos nos de animacao) e sem pesos de bone.
+> **Pivot & Preview Notes:** The pivot pose closest to argument `0` becomes the node's rest pose; scale on pivots is ignored with a warning. Always create pivots while the cockpit/parent part is in its rest pose. Because the 0.3.x importer in this build animates imported parts at `frame = arg × 100` while new pivots use the official convention `frame = (arg + 1) × 100`, imported parts and new pivots will not move in sync during timeline scrubbing—this does not affect the exported `.edm` file.
 
-## EDM Fácil (0.6.0): animar sem saber de EDM
+**Textures & DDS Conversion:**
+- **Textures folder:** Point to your mod folder containing `.dds` textures.
+- **Material by name:** Searches the configured folder for files (`.png`, `.tga`, `.dds`, etc.) matching the mesh, material, or parent name and builds the shader using DCS naming conventions (`name.dds`, `name_NM.dds`, `name_RoughMet.dds`).
+- **Convert to DDS:** Exports `name.dds` (**DXT1** without alpha / **DXT5** with transparency) from images used by new meshes and `_NM` / `_RoughMet` maps loaded in the `.blend`.
+- **Pre-export check:** Reports missing textures or setup issues prior to export.
 
-Painel: 3D View > tecla **N** > aba **EDM**.
+#### Adding New Geometry (`v0.5.0`)
+1. Model the object in any scene collection, ensuring it is **visible** (eye and monitor icons enabled in the Outliner) and does not have the `edm_skip` property.
+2. **Parenting:** Parent the mesh to the target **node empty** (e.g., `cadeira front`, `piloto frente`) so it inherits cockpit animations and visibility. Unparented objects are written to the root node (static and always visible).
+3. **Materials:**
+   - If the Blender material's image already matches a texture in the `.edm`, that material is reused.
+   - If it is a new image, the exporter **creates a new EDM material** named after the image (remember to copy `<name>.dds` into your mod's textures folder).
+   - To force an existing material, add the custom property `edm_new_material` set to the material name or index.
+4. Object transforms and modifiers are baked into vertices upon export (ensure UVs are unwrapped for the target texture).
+5. After exporting, inspect **`EDM_Export_Report`** to review written, skipped, and removed entries.
+6. **Limitations:** Newly added geometry is static (no new animation nodes or bone weights).
 
-**Animar uma alavanca, botão, tampa, porta...**
-1. Posicione o **cursor 3D** na dobradiça/eixo (ou use Set Origin na peça) e selecione o(s) mesh(es) da peça.
-2. Painel EDM > **Girar** (ou **Mover**). Escolha o **argumento DCS** (o número que o cockpit/aeronave usa), o eixo e a quantidade (graus para Girar, metros para Mover; negativo inverte) e, em *Pivô em*, onde fica o eixo (objeto ativo / cursor 3D / centro).
-3. Teste com o slider **Testar argumento** (ou arraste a timeline: frame 100 = arg 0, 200 = arg 1, 0 = arg -1).
-4. Quer mais passos (ex.: trem de pouso com 3 posições)? Com o pivô selecionado, vá a outro frame, gire/mova o pivô e tecle **I**.
-5. Duas animações na mesma peça (ex.: gira e desliza): selecione o **mesh** de novo e crie a segunda; o novo pivô vira filho do primeiro (nós encadeados no arquivo), cada um com seu argumento.
-6. **Mostrar / Esconder**: informe as faixas do argumento em que a peça aparece, ex. `>0.5`, `0:0.3; 0.7:1`.
-7. Exporte normalmente (Arquivo > Exportar > DCS EDM). O Text `EDM_Export_Report` lista as "NEW animations written".
+#### Architecture & Fixes (`v0.4.0` — Reference)
+- **Shear / Stretching Fix:** Exact **SVD** decomposition (`~1e-13` error) into short empty chains (1 empty for simple nodes; up to 3 for animated levers with rotated non-uniform scale, such as *Flaps* and *Throttle Plate* on the A-29B), paired with **`EDM_Diagnostic`** (`Full`, `No animation`, `Legacy 0.3.x matrices`).
+- **Mesh Splitting & Joining:** *Split merged meshes into loose parts* using position-welded island detection (preserving UV seams), `edm_part_info` metadata, automatic per-slot recombination on export, and **EDM > Separate Selection as Part** for separating hull-welded parts (such as ejection seats).
+- **Naming & Mapping:** Meshes named `<parent_node>_mesh` with name-independent tracking via `edm_render_index`, `edm_parent_group`, and `edm_material_id` + **`EDM_Mapping`** report.
+- **Official Action Convention:** One Action per argument (`<arg>_<object>`), mapping `-1..1` to frames `0..200` (`frame 100 = arg 0`), float `VISIBLE` property with drivers, and **EDM > Argument preview** slider.
+- **Patch-Based Exporter:** Preserves original `.edm` structure, updates pivots from the chain's root empty, and writes reparented parts as new `RenderNode`s.
 
-Regras que o addon segue por você: a pose do pivô no argumento mais próximo de 0 vira o repouso do nó; as chaves são gravadas como deslocamento/rotação relativos a ele; rotações grandes não "viram" entre chaves; escala no pivô é ignorada (avisa).
-Faça o pivô com o cockpit/peça-pai na pose de repouso. O importador desta build (0.3.x) anima as peças importadas com frame = arg x 100; os pivôs novos usam a convenção oficial (frame = (arg+1) x 100), então ao arrastar a timeline peças importadas e pivôs novos não andam juntas na prévia - não afeta o arquivo exportado.
+### Automated Tests
 
-**Texturas (problema do cockpit do AMX e similares)**
-* Preencha **Pasta de texturas** (pasta do mod onde ficam os `.dds`).
-* **Material pelo nome**: nos meshes selecionados, procura na pasta um arquivo (png/tga/dds...) com o nome do mesh, do material ou do pai e monta o material. Convenção DCS: `nome.dds`, `nome_NM.dds`, `nome_RoughMet.dds`.
-* **Converter para DDS**: grava `nome.dds` (DXT1 sem transparência, DXT5 com) das imagens usadas pelos meshes novos e dos `_NM`/`_RoughMet` abertos no .blend.
-* **Verificar antes de exportar** diz o que ainda falta.
+Pure-Python unit test suite using a `numpy`-backed `bpy` mock:
 
-## Testes (0.6.0)
-`python3 -m unittest discover -s tests`: 58 testes (13 precisam de `EDM_TEST_FILE` e são pulados sem ele). Novos: `test_args` (poses -> chaves -> nó, conferido com `edm_nodeplan`), `test_new_anim` (alocação dos pivôs com um Blender simulado em numpy), `test_dds` (decodificação com Pillow), `test_smoke`.
+```bash
+# Run full test suite (58 tests in 0.6.0; 13 require EDM_TEST_FILE)
+python3 -m unittest discover -s tests
 
-## Testes (0.4/0.5)
-`EDM_TEST_FILE=/caminho/Cockpit_A-29B.EDM python3 -m unittest discover -s tests` (Python puro, bpy simulado).
-Resultado desta build: 15 testes OK (matemática, ilhas, slots, round-trip byte a byte, importação completa do cockpit com bpy simulado, pivôs, dry-run de exportação com as 992 partes recombinando nos 59 RenderNodes).
+# Run integration tests against a real .EDM file
+EDM_TEST_FILE=/path/to/Cockpit_A-29B.EDM python3 -m unittest discover -s tests
+```
 
-## Como testar no Blender 5.x
-1. Importe `Cockpit_A-29B.EDM` com defaults. Abra o Text `EDM_Diagnostic`. Compare com `Legacy 0.3.x matrices`: as peças esticadas devem corrigir.
-2. Selecione `Cockpit Base_mesh` > EDM > Split Loose Parts. Ache a cadeira por `edm_part_info`, selecione as peças, Join Parts, mova, exporte.
-3. Slider de arg 0..1 em Salvo, STICK, Throttle, Canopy.
-4. Exporte e abra no DCS / compare com o plugin oficial.
+- **0.6.0 Coverage:** `test_args` (poses, keyframes, and `edm_nodeplan` verification), `test_new_anim` (pivot allocation), `test_dds` (Pillow decoding), and `test_smoke`.
+- **0.4 / 0.5 Coverage:** 15 tests covering matrix math, island detection, slots, byte-for-byte round-trip, full cockpit import, pivots, and export dry-run (recombining 992 parts back into 59 `RenderNode`s).
 
-## Testado / NÃO testado (honesto)
-Testado: leitura, escrita idêntica, matemática, planejamento de cadeias, importação e exportação com bpy simulado.
-**Não testado:** execução dentro do Blender 5.x (APIs de Action em camadas, normais customizadas, drivers), nem o arquivo exportado dentro do DCS.
-**Fórmula não confirmada por texto oficial:** `rest = tf_matrix * T(tf_position) * R(tf_quat1) * R(q2) S(tf_scale) R(q2)^-1` (inclui `tf_quat2`). Difere da 0.3.x só em poucos nós; se algo ficar errado use o modo Legacy.
+### Validation Status & Roadmap
 
-## Ainda NÃO feito
-SkinNode/bones (importa como aviso; Bone/Lod/Billboard viram empty identidade), colisão (Shell/Segments), animação de escala (guardada em `edm_scale_data_unsupported`), exportação de materiais/uniforms editados, tabela de mapeamento editável pela UI, validação pré-export (nomes duplicados, escala aplicada...), cálculo do bbox no cabeçalho, suporte a EDM diferente da v10, múltiplos modelos importados ao mesmo tempo (`_node_empties` varre a cena inteira).
+#### Tested vs. Not Tested
+- **Tested:** Binary `.edm` reading, byte-identical writing, matrix math, node chain planning, and simulated `bpy` import/export.
+- **Not Tested:** Live execution inside **Blender 5.x** (layered Action APIs, custom normals, drivers) and in-engine verification inside **DCS World**.
+- **Rest Matrix Formula Note:** `rest = tf_matrix * T(tf_position) * R(tf_quat1) * R(q2) S(tf_scale) R(q2)^-1` (including `tf_quat2`) is not confirmed by official Eagle Dynamics documentation; if any node shows incorrect orientation, use *Legacy* mode.
+
+#### Roadmap (Not Yet Implemented)
+- Full `SkinNode` / bones support (currently imports with warning; `Bone`, `Lod`, and `Billboard` import as identity empties).
+- Collision geometry (`Shell` / `Segments`).
+- Scale animation export (currently preserved in `edm_scale_data_unsupported`).
+- Exporting edited materials and shader uniforms.
+- UI-editable material/node mapping table.
+- Pre-export validation checks (duplicate names, unapplied scale, etc.).
+- Header bounding box (`bbox`) recalculation.
+- Support for EDM format versions other than `v10`.
+- Scene isolation when importing multiple `.edm` models simultaneously (`_node_empties` currently scans the entire scene).
+
+---
+
+## Português
+
+Add-on customizado para importação, edição e exportação (via *patching*) de modelos **`.edm` do DCS World** no **Blender 4.2+** (projetado com suporte à linha **5.x**; ainda não executado dentro do Blender nesta build — veja *Status de Validação*).
+
+> **Atenção — Estado Real desta Build:**  
+> Os arquivos `import_edm.py` e `__init__.py` empacotados neste zip pertencem à linha **0.3.x** (um empty por nó, `frame = arg × 100`). Portanto, as seções da **0.4.0** abaixo (importador em cadeia anti-esticamento, `EDM_Diagnostic`, *Split/Join* e *Mapping Report*) descrevem a arquitetura 0.4.x e **não estão ativos neste zip**. As ferramentas da **0.6.0** e **0.7.0** (Connectors, *EDM Fácil*, texturas, verificação e conversão DDS) operam sobre o importador 0.3.x e o exportador 0.5.8.
+
+### Instalação
+
+1. Acesse a aba **[Releases](../../releases/latest)** e baixe o arquivo **`io_scene_edm_custom.zip`** *(não extraia o `.zip`)*.
+2. Caso possua uma versão anterior deste add-on instalada, desative-a e remova-a antes de prosseguir.
+3. No **Blender**, vá em **Edit > Preferences > Add-ons**.
+4. Clique na seta no canto superior direito (`v`) e selecione **Install from Disk...**.
+5. Selecione o arquivo `io_scene_edm_custom.zip` e ative a opção **`DCS World EDM format (.edm) [custom]`**.
+
+### Principais Recursos
+
+#### Connectors (`v0.7.0`)
+- **Exportação automática de Connectors:** Novos empties nomeados com prefixo `A29N-*`, `PNT_*`, `PTR-*` ou `FP_*` (ou contendo a propriedade customizada `edm_connector = 1`) são gravados como *Connector* no arquivo `.edm`.
+- **Relatório:** Confira os itens gravados na seção `NEW CONNECTORS written` dentro do bloco de texto **`EDM_Export_Report`**.
+- **Telas / Displays:** Utilize o trio padrão `CENTER`, `DOWN` e `RIGHT`, cada um com seu respectivo filho `.001` (compatível com o padrão gerado pelo script `A29N_criar_conectores.py`).
+
+#### EDM Fácil — Animação e Texturas (`v0.6.0`)
+Acesse o painel na **3D View** pressionando **`N`** e abrindo a aba **`EDM`**.
+
+**Animar alavancas, botões, tampas e portas:**
+1. Posicione o **Cursor 3D** no eixo/dobradiça (ou ajuste a origem da peça) e selecione os meshes desejados.
+2. No painel **EDM**, escolha **Girar** ou **Mover**, defina o **argumento DCS**, o eixo e o deslocamento (graus ou metros; valores negativos invertem o sentido) e selecione a referência em *Pivô em* (objeto ativo, cursor 3D ou centro).
+3. Valide o movimento usando o slider **Testar argumento** ou arrastando a timeline (`frame 100 = arg 0`, `frame 200 = arg 1`, `frame 0 = arg -1`).
+4. **Múltiplos estágios** *(ex.: trem de pouso de 3 posições)*: Com o pivô selecionado, vá para outro frame, rotacione/mova o pivô e pressione **`I`**.
+5. **Animações combinadas** *(ex.: girar e deslizar na mesma peça)*: Selecione o **mesh** novamente e crie a segunda animação; o novo pivô será parentado automaticamente ao primeiro (nós encadeados no `.edm`), cada um com seu próprio argumento.
+6. **Visibilidade (*Mostrar / Esconder*):** Informe as faixas de argumento em que a peça fica visível (ex.: `>0.5` ou `0:0.3; 0.7:1`).
+7. Exporte via **File > Export > DCS EDM** e confira a lista em `NEW animations written` no texto **`EDM_Export_Report`**.
+
+> **Notas sobre pivôs e prévia:** A pose do pivô no argumento mais próximo de `0` define o repouso do nó; escalas no pivô são ignoradas com aviso. Crie os pivôs sempre com o cockpit/peça-pai na pose de repouso. Como o importador desta build (0.3.x) usa `frame = arg × 100` e os pivôs novos usam a convenção oficial `frame = (arg + 1) × 100`, peças importadas e pivôs novos não sincronizam na timeline durante a prévia — isso não afeta o arquivo exportado.
+
+**Gestão de Texturas e Conversão DDS:**
+- **Pasta de texturas:** Aponte para a pasta do mod onde ficam os arquivos `.dds`.
+- **Material pelo nome:** Busca automaticamente na pasta configurada arquivos (`.png`, `.tga`, `.dds`, etc.) correspondentes ao nome do mesh, material ou nó pai, montando o shader na convenção DCS (`nome.dds`, `nome_NM.dds`, `nome_RoughMet.dds`).
+- **Converter para DDS:** Exporta `nome.dds` (**DXT1** sem canal alfa / **DXT5** com transparência) para as imagens usadas pelos meshes novos e mapas `_NM` / `_RoughMet` abertos no `.blend`.
+- **Verificar antes de exportar:** Diagnostica texturas ou configurações pendentes antes da gravação.
+
+#### Adicionar Geometria Nova (`v0.5.0`)
+1. Modele o objeto em qualquer coleção da cena, garantindo que esteja **visível** (olho e monitor ativos na Outliner) e sem a propriedade `edm_skip`.
+2. **Hierarquia:** Parente o mesh ao **empty do nó** de destino (ex.: `cadeira front`, `piloto frente`) para herdar animações e visibilidade. Objetos sem pai são gravados no nó raiz (estáticos e sempre visíveis).
+3. **Materiais:**
+   - Se a imagem já pertence a um material existente no `.edm`, o material é reaproveitado.
+   - Se for uma textura nova, o exportador **cria um novo material EDM** com o nome da imagem (lembre-se de copiar `<nome>.dds` para a pasta de texturas do mod).
+   - Para forçar um material específico, adicione a propriedade customizada `edm_new_material` com o nome ou índice desejado.
+4. Transformações e modificadores do objeto são aplicados diretamente nos vértices durante o export (certifique-se de que o mapeamento UV esteja pronto).
+5. Após exportar, revise o Text **`EDM_Export_Report`** para conferir itens gravados, ignorados e removidos.
+6. **Limitação:** Geometrias novas adicionadas por este fluxo são estáticas (sem criação de novos nós de animação ou pesos de *bones*).
+
+#### Arquitetura e Correções (`v0.4.0` — Referência)
+- **Correção de distorção / cisalhamento:** Decomposição exata por **SVD** (erro `~1e-13`) em cadeias curtas de empties (1 empty para nós simples; até 3 para alavancas animadas com escala não uniforme rotacionada, como *Flaps* e *Throttle Plate* do A-29B), acompanhada do relatório **`EDM_Diagnostic`** (`Full`, `No animation`, `Legacy 0.3.x matrices`).
+- **Separação e junção de malhas (*Split / Join*):** Opção *Split merged meshes into loose parts* com detecção de ilhas soldadas por posição (preservando costuras de UV), metadados em `edm_part_info`, recombinação automática por slot no export e operador **EDM > Separate Selection as Part** para destacar peças soldadas ao casco (como assentos ejetores).
+- **Nomenclatura e mapeamento:** Meshes nomeados como `<nó_pai>_mesh` com vínculo independente de nome via `edm_render_index`, `edm_parent_group` e `edm_material_id` + relatório **`EDM_Mapping`**.
+- **Convenção oficial de Actions:** Uma Action por argumento (`<arg>_<objeto>`), mapeando `-1..1` nos frames `0..200` (`frame 100 = arg 0`), propriedade `VISIBLE` com drivers e slider **EDM > Argument preview**.
+- **Exportador por *patching*:** Preserva a estrutura do `.edm` original, atualizando pivôs a partir do primeiro empty da cadeia e registrando partes reparentadas como novos `RenderNode`s.
+
+### Testes Automatizados
+
+Suíte de testes unitários em Python puro (com simulação de `bpy` em `numpy`):
+
+```bash
+# Executar suíte completa (58 testes na linha 0.6.0; 13 requerem EDM_TEST_FILE)
+python3 -m unittest discover -s tests
+
+# Executar testes de integração contra um arquivo .EDM real
+EDM_TEST_FILE=/caminho/Cockpit_A-29B.EDM python3 -m unittest discover -s tests
+```
+
+- **Cobertura (`v0.6.0`):** `test_args` (poses, chaves e planejamento via `edm_nodeplan`), `test_new_anim` (alocação de pivôs), `test_dds` (decodificação via Pillow) e `test_smoke`.
+- **Cobertura (`v0.4` / `v0.5`):** 15 testes de matemática, detecção de ilhas, slots, *round-trip* byte a byte, importação completa e *dry-run* de exportação (992 partes recombinadas em 59 `RenderNode`s).
+
+### Status de Validação & Roadmap
+
+#### Testado vs. Não Testado
+- **Testado:** Leitura e escrita idêntica de `.edm`, matemática matricial, planejamento de cadeias de nós, importação e exportação via `bpy` simulado.
+- **Não testado:** Execução ao vivo dentro da interface do **Blender 5.x** (APIs de Actions em camadas, normais customizadas e drivers) e validação final do arquivo exportado dentro do **DCS World**.
+- **Nota sobre matriz de repouso:** A fórmula `rest = tf_matrix * T(tf_position) * R(tf_quat1) * R(q2) S(tf_scale) R(q2)^-1` (incluindo `tf_quat2`) não possui confirmação em documentação oficial da Eagle Dynamics; caso algum nó apresente orientação incorreta, utilize o modo *Legacy*.
+
+#### Roteiro de Desenvolvimento (Ainda não implementado)
+- Suporte completo a `SkinNode` / *bones* (atualmente importa com aviso; `Bone`, `Lod` e `Billboard` viram empties identidade).
+- Geometria de colisão (`Shell` / `Segments`).
+- Exportação de animação de escala (atualmente preservada em `edm_scale_data_unsupported`).
+- Exportação de materiais e *uniforms* editados no Blender.
+- Tabela de mapeamento editável diretamente pela interface (UI).
+- Validação pré-exportação (verificação de nomes duplicados, escalas não aplicadas, etc.).
+- Recálculo automático da *bounding box* (`bbox`) no cabeçalho do `.edm`.
+- Suporte a versões de formato EDM diferentes da `v10`.
+- Isolamento de cena para múltiplos modelos `.edm` importados simultaneamente (`_node_empties` atualmente varre a cena inteira).
